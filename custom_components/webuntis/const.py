@@ -19,6 +19,8 @@ DEFAULT_OPTIONS = {
     "calendar_show_room_change": False,
     "notify_config": {},
     "invalid_subjects": False,
+    "timetable_source": None,
+    "timetable_source_id": None,
 }
 
 NOTIFY_OPTIONS = ["homework", "cancelled", "rooms", "lesson_change", "teachers", "code"]

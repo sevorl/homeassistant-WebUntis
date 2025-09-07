@@ -66,6 +66,7 @@
     "step": {
       "init": {
         "menu_options": {
+          "timetable_source": "Timetable Source",
           "filter": "Filter",
           "calendar": "Calendar",
           "lesson": "Lesson Name",
@@ -147,6 +148,34 @@
           "data": "e.g.,\nnotification_icon: mdi:school-outline",
           "entity_id": "e.g., notify.discord",
           "template": "may overwrite data keys"
+        }
+      },
+      "timetable_source": {
+        "title": "Timetable Source Settings",
+        "description": "Configure which timetable to display. Changes take effect after restart.",
+        "data": {
+          "timetable_source": "Timetable source"
+        }
+      },
+      "timetable_source_student": {
+        "title": "Select Student",
+        "description": "Choose which student's timetable to display.",
+        "data": {
+          "student": "Student"
+        }
+      },
+      "timetable_source_teacher": {
+        "title": "Select Teacher", 
+        "description": "Choose which teacher's timetable to display.",
+        "data": {
+          "teacher": "Teacher"
+        }
+      },
+      "timetable_source_klasse": {
+        "title": "Select Class",
+        "description": "Choose which class timetable to display.",
+        "data": {
+          "klasse": "Class"
         }
       },
       "notify_menu": {

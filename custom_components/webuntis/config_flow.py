@@ -340,10 +340,27 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             .replace(" ", "-")
         )
         self._abort_if_unique_id_configured()
+        
+        # Separate data and options according to Jonas's requirements
+        # Data should only contain server credentials and basic info
+        data = {
+            "server": user_input["server"],
+            "school": user_input["school"], 
+            "username": user_input["username"],
+            "password": user_input["password"],
+        }
+        
+        # Options should contain all configurable settings including timetable source
+        options = {**DEFAULT_OPTIONS}
+        options.update({
+            "timetable_source": user_input.get("timetable_source"),
+            "timetable_source_id": user_input.get("timetable_source_id"),
+        })
+        
         return self.async_create_entry(
             title=user_input["username"],
-            data=user_input,
-            options=DEFAULT_OPTIONS,
+            data=data,
+            options=options,
         )
 
     def _show_form_user(
@@ -390,6 +407,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 OPTIONS_MENU = [
+    "timetable_source",
     "filter",
     "calendar",
     "lesson",
@@ -887,6 +905,203 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="edit_notify_service",
             data_schema=vol.Schema(schema_options),
+            errors=errors,
+        )
+
+    async def async_step_timetable_source(self, user_input: dict[str, str] = None) -> FlowResult:
+        """Manage timetable source options."""
+        errors = {}
+        
+        if user_input is not None:
+            # Save the timetable source selection
+            if user_input["timetable_source"] == "personal":
+                # For personal, no additional selection needed
+                return await self.save({
+                    "timetable_source": "personal",
+                    "timetable_source_id": "personal"
+                })
+            elif user_input["timetable_source"] == "student":
+                return await self.async_step_timetable_source_student()
+            elif user_input["timetable_source"] == "teacher":
+                return await self.async_step_timetable_source_teacher()
+            elif user_input["timetable_source"] == "klasse":
+                return await self.async_step_timetable_source_klasse()
+
+        # Get current timetable source from options
+        current_source = self._config_entry.options.get("timetable_source", "personal")
+
+        return self.async_show_form(
+            step_id="timetable_source",
+            data_schema=vol.Schema({
+                vol.Required(
+                    "timetable_source",
+                    default=current_source,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            {"value": "personal", "label": "Personal"},
+                            {"value": "student", "label": "Student"}, 
+                            {"value": "teacher", "label": "Teacher"},
+                            {"value": "klasse", "label": "Class"},
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                        translation_key="timetable_source",
+                    )
+                ),
+            }),
+            errors=errors,
+        )
+
+    async def async_step_timetable_source_student(self, user_input: dict[str, str] = None) -> FlowResult:
+        """Select student for timetable source."""
+        errors = {}
+        
+        if user_input is not None:
+            return await self.save({
+                "timetable_source": "student",
+                "timetable_source_id": [
+                    int(user_input["student"].split(" - ")[0]),
+                    user_input["student"].split(" - ")[1]
+                ]
+            })
+
+        # Create session to get students list
+        try:
+            session = ExtendedSession(
+                server=self._config_entry.data["server"],
+                username=self._config_entry.data["username"],
+                password=self._config_entry.data["password"],
+                school=self._config_entry.data["school"],
+                useragent="HomeAssistant-WebUntis",
+            )
+            await self.hass.async_add_executor_job(session.login)
+            students = await self.hass.async_add_executor_job(session.students)
+            await self.hass.async_add_executor_job(session.logout)
+            
+            student_options = [f"{s.id} - {s.forename} {s.surname}" for s in students]
+            
+        except Exception as e:
+            errors["base"] = "cannot_connect"
+            student_options = []
+
+        current_id = self._config_entry.options.get("timetable_source_id")
+        current_student = ""
+        if isinstance(current_id, list) and len(current_id) == 2:
+            current_student = f"{current_id[0]} - {current_id[1]}"
+
+        return self.async_show_form(
+            step_id="timetable_source_student",
+            data_schema=vol.Schema({
+                vol.Required(
+                    "student", 
+                    default=current_student
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=student_options,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }),
+            errors=errors,
+        )
+
+    async def async_step_timetable_source_teacher(self, user_input: dict[str, str] = None) -> FlowResult:
+        """Select teacher for timetable source."""
+        errors = {}
+        
+        if user_input is not None:
+            return await self.save({
+                "timetable_source": "teacher",
+                "timetable_source_id": [
+                    int(user_input["teacher"].split(" - ")[0]),
+                    user_input["teacher"].split(" - ")[1]
+                ]
+            })
+
+        # Create session to get teachers list
+        try:
+            session = ExtendedSession(
+                server=self._config_entry.data["server"],
+                username=self._config_entry.data["username"],
+                password=self._config_entry.data["password"],
+                school=self._config_entry.data["school"],
+                useragent="HomeAssistant-WebUntis",
+            )
+            await self.hass.async_add_executor_job(session.login)
+            teachers = await self.hass.async_add_executor_job(session.teachers)
+            await self.hass.async_add_executor_job(session.logout)
+            
+            teacher_options = [f"{t.id} - {t.forename} {t.surname}" for t in teachers]
+            
+        except Exception as e:
+            errors["base"] = "cannot_connect"
+            teacher_options = []
+
+        current_id = self._config_entry.options.get("timetable_source_id")
+        current_teacher = ""
+        if isinstance(current_id, list) and len(current_id) == 2:
+            current_teacher = f"{current_id[0]} - {current_id[1]}"
+
+        return self.async_show_form(
+            step_id="timetable_source_teacher",
+            data_schema=vol.Schema({
+                vol.Required(
+                    "teacher",
+                    default=current_teacher
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=teacher_options,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }),
+            errors=errors,
+        )
+
+    async def async_step_timetable_source_klasse(self, user_input: dict[str, str] = None) -> FlowResult:
+        """Select class for timetable source."""
+        errors = {}
+        
+        if user_input is not None:
+            return await self.save({
+                "timetable_source": "klasse",
+                "timetable_source_id": user_input["klasse"]
+            })
+
+        # Create session to get classes list
+        try:
+            session = ExtendedSession(
+                server=self._config_entry.data["server"],
+                username=self._config_entry.data["username"],
+                password=self._config_entry.data["password"],
+                school=self._config_entry.data["school"],
+                useragent="HomeAssistant-WebUntis",
+            )
+            await self.hass.async_add_executor_job(session.login)
+            klassen = await self.hass.async_add_executor_job(session.klassen)
+            await self.hass.async_add_executor_job(session.logout)
+            
+            class_options = [k.name for k in klassen]
+            
+        except Exception as e:
+            errors["base"] = "cannot_connect"
+            class_options = []
+
+        current_class = self._config_entry.options.get("timetable_source_id", "")
+
+        return self.async_show_form(
+            step_id="timetable_source_klasse",
+            data_schema=vol.Schema({
+                vol.Required(
+                    "klasse",
+                    default=current_class
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=class_options,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }),
             errors=errors,
         )
 

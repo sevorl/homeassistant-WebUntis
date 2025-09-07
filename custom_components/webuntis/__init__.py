@@ -48,8 +48,51 @@ PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.CALENDAR, Platfor
 _LOGGER = logging.getLogger(__name__)
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old entry to new format."""
+    
+    # Get current data and options
+    new_data = {**entry.data}
+    new_options = {**entry.options}
+    
+    # Migrate timetable_source and timetable_source_id from data to options
+    if "timetable_source" in entry.data:
+        new_options["timetable_source"] = entry.data["timetable_source"]
+        # Remove from data since it should only be in options
+        del new_data["timetable_source"]
+    
+    if "timetable_source_id" in entry.data:
+        new_options["timetable_source_id"] = entry.data["timetable_source_id"]
+        # Remove from data since it should only be in options
+        del new_data["timetable_source_id"]
+    
+    # Update version
+    entry.version = CONFIG_ENTRY_VERSION
+    
+    # Update entry with migrated data
+    hass.config_entries.async_update_entry(
+        entry, 
+        data=new_data, 
+        options=new_options,
+        version=CONFIG_ENTRY_VERSION
+    )
+    
+    _LOGGER.info("Successfully migrated config entry to version %s", CONFIG_ENTRY_VERSION)
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up WebUntis from a config entry."""
+    
+    # Handle config entry version migration
+    if entry.version < CONFIG_ENTRY_VERSION:
+        _LOGGER.info(
+            "Migrating config entry from version %s to %s",
+            entry.version,
+            CONFIG_ENTRY_VERSION
+        )
+        await async_migrate_entry(hass, entry)
+    
     domain_data = hass.data.setdefault(DOMAIN, {})
 
     # Create and store server instance.
@@ -171,8 +214,10 @@ class WebUntis:
         self.school = config.data["school"]
         self.username = config.data["username"]
         self.password = config.data["password"]
-        self.timetable_source = config.data["timetable_source"]
-        self.timetable_source_id = config.data["timetable_source_id"]
+        # Always read timetable source from options (never from config.data)
+        # Fallback to "personal" if not set (for existing entries before migration)
+        self.timetable_source = config.options.get("timetable_source") or "personal"
+        self.timetable_source_id = config.options.get("timetable_source_id") or "personal"
         self.title = config.title
 
         self.calendar_show_cancelled_lessons = config.options[
